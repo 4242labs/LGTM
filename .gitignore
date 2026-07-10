@@ -1,0 +1,10 @@
+node_modules/
+reports/
+*.log
+.DS_Store
+# transient auth material — never commit a captured session
+sites/*.storageState.json
+.auth/
+# real site configs stay local; only the template is committed
+sites/*.yaml
+!sites/example.yaml

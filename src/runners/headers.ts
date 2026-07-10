@@ -1,0 +1,201 @@
+import type { Finding, Runner, RunnerContext, RunnerResult } from "../types.js";
+import { fetchUrl, isLocalhostUrl } from "../util/http.js";
+
+// Security-header expectations, aligned with the OWASP Secure Headers Project
+// and Mozilla Observatory. Each check is evaluated against the base URL's
+// response. Missing/weak → a finding; present-and-strong → an info pass-note.
+
+interface HeaderCheck {
+  id: string;
+  header: string;
+  severity: Finding["severity"];
+  standard: string;
+  remediation: string;
+  /** Return null if OK, else a short reason the value is weak/missing. */
+  evaluate: (value: string | undefined, ctx: { https: boolean }) => string | null;
+}
+
+const CHECKS: HeaderCheck[] = [
+  {
+    id: "csp",
+    header: "content-security-policy",
+    severity: "high",
+    standard: "OWASP Secure Headers; CSP Level 3",
+    remediation:
+      "Set a Content-Security-Policy. Avoid 'unsafe-inline'/'unsafe-eval'; prefer nonces/hashes and a strict default-src.",
+    evaluate: (v) => {
+      if (!v) return "no Content-Security-Policy header";
+      const lc = v.toLowerCase();
+      const weak: string[] = [];
+      if (lc.includes("unsafe-inline")) weak.push("uses 'unsafe-inline'");
+      if (lc.includes("unsafe-eval")) weak.push("uses 'unsafe-eval'");
+      if (!lc.includes("default-src") && !lc.includes("script-src"))
+        weak.push("no default-src/script-src directive");
+      if (lc.includes("script-src") && lc.match(/script-src[^;]*\*/))
+        weak.push("wildcard in script-src");
+      return weak.length ? weak.join("; ") : null;
+    },
+  },
+  {
+    id: "hsts",
+    header: "strict-transport-security",
+    severity: "high",
+    standard: "RFC 6797; OWASP Secure Headers",
+    remediation:
+      "Send Strict-Transport-Security: max-age=63072000; includeSubDomains; preload (min max-age 31536000).",
+    evaluate: (v, { https }) => {
+      if (!https) return null; // HSTS is meaningless over http (localhost dev)
+      if (!v) return "no Strict-Transport-Security header";
+      const m = v.match(/max-age=(\d+)/i);
+      if (!m || !m[1]) return "no max-age directive";
+      if (Number(m[1]) < 31536000) return `max-age ${m[1]} < 1 year`;
+      return null;
+    },
+  },
+  {
+    id: "x-content-type-options",
+    header: "x-content-type-options",
+    severity: "medium",
+    standard: "OWASP Secure Headers",
+    remediation: "Set X-Content-Type-Options: nosniff.",
+    evaluate: (v) =>
+      v?.toLowerCase().includes("nosniff") ? null : "missing or not 'nosniff'",
+  },
+  {
+    id: "x-frame-options",
+    header: "x-frame-options",
+    severity: "medium",
+    standard: "OWASP Secure Headers (clickjacking)",
+    remediation:
+      "Set X-Frame-Options: DENY, or a CSP frame-ancestors 'none'/'self' directive.",
+    evaluate: (v) => {
+      // CSP frame-ancestors supersedes XFO; the runner cross-checks below.
+      if (!v) return "no X-Frame-Options header";
+      const lc = v.toLowerCase();
+      if (lc.includes("deny") || lc.includes("sameorigin")) return null;
+      return `weak value '${v}'`;
+    },
+  },
+  {
+    id: "referrer-policy",
+    header: "referrer-policy",
+    severity: "low",
+    standard: "OWASP Secure Headers",
+    remediation:
+      "Set Referrer-Policy: strict-origin-when-cross-origin (or stricter).",
+    evaluate: (v) => (v ? null : "no Referrer-Policy header"),
+  },
+  {
+    id: "permissions-policy",
+    header: "permissions-policy",
+    severity: "low",
+    standard: "W3C Permissions Policy",
+    remediation:
+      "Set Permissions-Policy to disable unused features, e.g. geolocation=(), camera=(), microphone=().",
+    evaluate: (v) => (v ? null : "no Permissions-Policy header"),
+  },
+  {
+    id: "coop",
+    header: "cross-origin-opener-policy",
+    severity: "low",
+    standard: "HTML spec; cross-origin isolation",
+    remediation: "Set Cross-Origin-Opener-Policy: same-origin.",
+    evaluate: (v) =>
+      v?.toLowerCase().includes("same-origin") ? null : "missing/weak COOP",
+  },
+];
+
+// Headers that leak stack detail — presence is the finding.
+const LEAKY = ["server", "x-powered-by", "x-aspnet-version"];
+
+export const headersRunner: Runner = {
+  id: "headers",
+  domain: "security",
+  title: "Security headers",
+  requires: { target: true },
+  async run(ctx: RunnerContext): Promise<RunnerResult> {
+    const start = Date.now();
+    const findings: Finding[] = [];
+    const url = ctx.run.baseUrl;
+    let res;
+    try {
+      res = await fetchUrl(url, { timeoutMs: 30_000 });
+    } catch (err) {
+      return {
+        runnerId: this.id,
+        domain: this.domain,
+        status: "error",
+        note: `fetch failed: ${(err as Error).message}`,
+        findings,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    const https = url.startsWith("https://") && !isLocalhostUrl(url);
+    const h = res.headers;
+    const csp = h["content-security-policy"] ?? "";
+    const cspFrameAncestors = /frame-ancestors/i.test(csp);
+
+    for (const c of CHECKS) {
+      // XFO is satisfied by a CSP frame-ancestors directive.
+      if (c.id === "x-frame-options" && cspFrameAncestors && !h[c.header]) {
+        continue;
+      }
+      const reason = c.evaluate(h[c.header], { https });
+      if (reason) {
+        findings.push({
+          id: c.id,
+          title: `${c.header}: ${reason}`,
+          severity: c.severity,
+          standard: c.standard,
+          location: res.finalUrl,
+          remediation: c.remediation,
+          evidence: h[c.header] ? `${c.header}: ${h[c.header]}` : undefined,
+        });
+      }
+    }
+
+    for (const leak of LEAKY) {
+      if (h[leak]) {
+        findings.push({
+          id: `leak-${leak}`,
+          title: `${leak} header leaks stack detail`,
+          severity: "low",
+          standard: "OWASP ASVS 14.4.4 (information leakage)",
+          location: res.finalUrl,
+          remediation: `Remove or blank the ${leak} response header.`,
+          evidence: `${leak}: ${h[leak]}`,
+        });
+      }
+    }
+
+    // http:// on a non-local target is itself a finding.
+    if (url.startsWith("http://") && !isLocalhostUrl(url)) {
+      findings.push({
+        id: "no-tls",
+        title: "Target served over plaintext HTTP",
+        severity: "high",
+        standard: "OWASP ASVS 9.1",
+        location: url,
+        remediation: "Serve exclusively over HTTPS and redirect http→https.",
+      });
+    }
+
+    if (findings.length === 0) {
+      findings.push({
+        id: "headers-ok",
+        title: "All checked security headers present and strong",
+        severity: "info",
+      });
+    }
+
+    return {
+      runnerId: this.id,
+      domain: this.domain,
+      status: "ok",
+      findings,
+      durationMs: Date.now() - start,
+      meta: { finalUrl: res.finalUrl, status: res.status },
+    };
+  },
+};

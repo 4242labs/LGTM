@@ -1,0 +1,38 @@
+# Site config template. Copy to sites/<name>.yaml and edit — real configs are
+# git-ignored, so yours never get committed. `lgtm run <name>` picks it up.
+
+# Slug — must match the filename and the `run <name>` argument.
+name: example
+
+# Optional display name for the report.
+label: Example Site
+
+# Required. Probed by the black-box runners. Local-first: point at your dev
+# server, then re-point at prod with `--url https://example.com`.
+baseUrl: http://localhost:3000
+
+# Optional. Absolute or ~/-relative path to the repo checkout. Unlocks the
+# white-box scanners (deps / secrets / sast). Omit and those auto-skip.
+# repoPath: ~/code/example-app
+
+# Extra routes (paths or absolute URLs) to cover for a11y / perf / access-control.
+routes:
+  - /
+  - /pricing
+  - /login
+
+# Authentication:
+#   { type: none }                          public pages only
+#   { type: storageState, path: .auth/x }   authed — capture via `lgtm auth <name>`
+auth:
+  type: none
+  # type: storageState
+  # path: .auth/example.json
+
+# Fail the run (exit 1) if any finding is at or above this severity.
+# One of: critical | high | medium | low
+failOn: high
+
+# Optional: runner ids to skip for this site.
+# skip:
+#   - zap

@@ -1,0 +1,34 @@
+{
+  "name": "lgtm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "lgtm — cross-site security, accessibility, privacy and quality harness. Runs locally before launch, re-pointable at any live URL.",
+  "type": "module",
+  "bin": {
+    "lgtm": "./src/cli.ts"
+  },
+  "scripts": {
+    "audit": "tsx src/cli.ts",
+    "setup": "playwright install chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "axe-core": "^4.10.2",
+    "chrome-launcher": "^1.1.2",
+    "commander": "^12.1.0",
+    "lighthouse": "^12.2.1",
+    "picocolors": "^1.1.1",
+    "playwright": "^1.48.2",
+    "yaml": "^2.6.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
