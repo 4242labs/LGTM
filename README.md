@@ -94,5 +94,4 @@ access → high finding), authed responses aren't cacheable, and cookies are sou
 
 ## License
 
-Dual-licensed: **[AGPL-3.0](LICENSE)** for open-source use, or a **commercial
-license** for closed-source / SaaS use — **ahoy@42labs.io**.
+Open source — [AGPL-3.0](LICENSE). Commercial — contact ahoy@42labs.io.
