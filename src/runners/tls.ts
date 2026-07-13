@@ -44,6 +44,16 @@ export const tlsRunner: Runner = {
         args: [
           "--quiet",
           "--fast",
+          // A hostname behind a CDN/anycast (Cloudflare, Vercel, ...) usually
+          // resolves to 2+ A records. Without --ip, testssl.sh loops the scan
+          // over every resolved IP and concatenates the results — the exact
+          // same check block appears twice (or partially twice) in the JSON
+          // for a dual-IP host (reproduced on ds.42labs.io and 42piratas.com,
+          // both Cloudflare-fronted, both resolving to 2 IPs). One IP is a
+          // representative, honest sample of the edge's TLS posture; scan it
+          // once.
+          "--ip",
+          "one",
           "--severity",
           "LOW",
           "--jsonfile",
