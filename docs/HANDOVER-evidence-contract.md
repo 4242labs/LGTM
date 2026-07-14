@@ -1,7 +1,10 @@
 # Handover: LGTM lies, and patching it one runner at a time is not working
 
 **For:** the next agent taking this on.
-**Status of the code:** PR #3 is open and green (260 tests). It fixes six real bugs. **It does not fix the thing that caused them.**
+**Linear card:** **42L-973** — that is where this work is tracked. Update it; do not open a new one.
+**Related cards:** 42L-949 (makes LGTM the mandatory CI gate for every project — blocked on this), 42L-999 (no repo currently blocks a red build).
+**PRs:** this doc is **LGTM #4**. The six fixes + the test suite are **LGTM #3** (open, green, unmerged; it also contains #2's commits, so merging #3 lands both).
+**Status of the code:** PR #3 fixes six real bugs. **It does not fix the thing that caused them.**
 **Your job:** fix the cause. Not a seventh bug.
 
 ---
