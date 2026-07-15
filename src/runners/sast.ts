@@ -57,9 +57,36 @@ export const sastRunner: Runner = {
     const configArgs = CONFIGS.flatMap((c) => ["--config", c]);
     const r = await dockerRun({
       image: IMAGE,
-      args: ["semgrep", "scan", ...configArgs, "--json", "--quiet", "--timeout", "0", "/src"],
+      // Bound semgrep's resource use so it degrades gracefully instead of
+      // OOM-dying with no output — the failure mode that ran ~24 min then exited
+      // by signal on a large TS repo (alfred-app), leaving the gate un-passable.
+      //   --max-memory: per-rule×file RAM cap (MiB); an oversized target is
+      //     SKIPPED (surfaced as a scan error) rather than blowing up the process.
+      //   --jobs 1: this cap is PER WORKER, and semgrep otherwise forks
+      //     ~cores workers — on a multi-core runner N × the cap can still exceed
+      //     host RAM. Pinning one worker makes the ceiling deterministic
+      //     (~4 GB + base) and safe on the 7 GB GitHub-hosted runner regardless
+      //     of core count; a gate must be reliable before fast.
+      //   --timeout / --timeout-threshold: bound pathological rule×file combos
+      //     the previous `--timeout 0` (unbounded) let hang indefinitely.
+      args: [
+        "semgrep",
+        "scan",
+        ...configArgs,
+        "--json",
+        "--quiet",
+        "--jobs",
+        "1",
+        "--timeout",
+        "120",
+        "--timeout-threshold",
+        "3",
+        "--max-memory",
+        "4000",
+        "/src",
+      ],
       mounts: { "/src": repo },
-      timeoutMs: 480_000,
+      timeoutMs: 900_000,
     });
 
     // A clean semgrep --json run always emits at least `{"results":[]}`. If
