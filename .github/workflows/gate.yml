@@ -66,6 +66,14 @@ jobs:
           cache: npm
           cache-dependency-path: lgtm/package-lock.json
 
+      # Hosted runners normally start Docker, but the gate must restore and
+      # prove that prerequisite before claiming the container-based domains
+      # were audited.
+      - name: Start and verify Docker
+        run: |
+          sudo systemctl is-active --quiet docker || sudo systemctl start docker
+          docker info --format '{{.ServerVersion}}'
+
       - name: Install LGTM
         working-directory: lgtm
         run: npm ci
